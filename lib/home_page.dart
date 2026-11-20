@@ -6,6 +6,7 @@ import 'services/auth_service.dart';
 import 'services/schedule_service.dart';
 import 'widgets/add_edit_schedule_sheet.dart';
 import 'widgets/schedule_card.dart';
+import 'products_page.dart';
 
 class HomePage extends StatefulWidget {
   final bool isGuest;
@@ -25,7 +26,7 @@ class _HomePageState extends State<HomePage> {
   String _selectedCategory = 'All';
   String _selectedStatus = 'All'; // 'All', 'Pending', 'Done'
 
-  final List<String> _categories = [
+  final List<String> _categories = [  
     'All',
     'General',
     'Work',
@@ -34,6 +35,24 @@ class _HomePageState extends State<HomePage> {
     'Study',
     'Fitness',
   ];
+
+  int _selectedDrawerIndex = 0;
+
+  int get _todayPendingCount {
+    final count = _todayTotalCount - _todayCompletedCount;
+    return count < 0 ? 0 : count;
+  }
+
+  int get _highPriorityCount {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return _allSchedules
+        .where((item) =>
+            _isSameDay(item.date, today) &&
+            item.priority == SchedulePriority.high &&
+            !item.isCompleted)
+        .length;
+  }
 
   String get _effectiveUserId =>
       widget.isGuest ? 'guest_user' : (_currentUser?.uid ?? 'guest_user');
@@ -170,6 +189,236 @@ class _HomePageState extends State<HomePage> {
     return '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}';
   }
 
+  Widget _buildNavigationDrawer(BuildContext context) {
+    final todayTotal = _todayTotalCount;
+    final todayPending = _todayPendingCount;
+    final todayDone = _todayCompletedCount;
+    final highPriority = _highPriorityCount;
+
+    final displayName = widget.isGuest
+        ? 'Guest'
+        : (_currentUser?.displayName?.isNotEmpty == true
+            ? _currentUser!.displayName!
+            : (_currentUser?.email?.split('@').first ?? 'Schedly User'));
+
+    return NavigationDrawer(
+      selectedIndex: _selectedDrawerIndex,
+      onDestinationSelected: (int index) {
+        setState(() => _selectedDrawerIndex = index);
+        Navigator.of(context).pop(); // Close drawer
+
+        if (index == 0) {
+          // Today's Schedule (All)
+          setState(() {
+            final now = DateTime.now();
+            _selectedDate = DateTime(now.year, now.month, now.day);
+            _selectedStatus = 'All';
+            _selectedCategory = 'All';
+          });
+        } else if (index == 1) {
+          // Pending Tasks
+          setState(() {
+            final now = DateTime.now();
+            _selectedDate = DateTime(now.year, now.month, now.day);
+            _selectedStatus = 'Pending';
+          });
+        } else if (index == 2) {
+          // Completed Tasks
+          setState(() {
+            final now = DateTime.now();
+            _selectedDate = DateTime(now.year, now.month, now.day);
+            _selectedStatus = 'Done';
+          });
+        } else if (index == 3) {
+          // High Priority Tasks
+          setState(() {
+            _selectedCategory = 'All';
+            _selectedStatus = 'Pending';
+          });
+        } else if (index == 4) {
+          // Task & Work Catalog (HTTP API)
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const ProductsPage()),
+          );
+        }
+      },
+      children: [
+        // Drawer Header with App Branding & Profile
+        Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Image.asset(
+                    'asset/logo.png',
+                    height: 38,
+                    fit: BoxFit.contain,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                    tooltip: 'Close Menu',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                displayName,
+                style: GoogleFonts.outfit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                widget.isGuest ? 'Offline Guest Mode' : (_currentUser?.email ?? 'schedly@user.com'),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(indent: 20, endIndent: 20, height: 1),
+
+        // Section: Tasks & Schedules
+        const Padding(
+          padding: EdgeInsets.fromLTRB(28, 16, 16, 8),
+          child: Text(
+            'Tasks & Schedules',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF64748B),
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+
+        // Destination 1: Today's Schedule (with count Badge)
+        NavigationDrawerDestination(
+          icon: Badge.count(
+            count: todayTotal,
+            isLabelVisible: todayTotal > 0,
+            backgroundColor: Colors.deepPurple,
+            child: const Icon(Icons.calendar_today_outlined),
+          ),
+          selectedIcon: Badge.count(
+            count: todayTotal,
+            isLabelVisible: todayTotal > 0,
+            backgroundColor: Colors.deepPurple,
+            child: const Icon(Icons.calendar_today_rounded),
+          ),
+          label: Text(todayTotal > 0 ? "Today's Schedule ($todayTotal)" : "Today's Schedule"),
+        ),
+
+        // Destination 2: Pending Tasks (with Badge)
+        NavigationDrawerDestination(
+          icon: Badge.count(
+            count: todayPending,
+            isLabelVisible: todayPending > 0,
+            backgroundColor: Colors.orange,
+            child: const Icon(Icons.pending_actions_outlined),
+          ),
+          selectedIcon: Badge.count(
+            count: todayPending,
+            isLabelVisible: todayPending > 0,
+            backgroundColor: Colors.orange,
+            child: const Icon(Icons.pending_actions_rounded),
+          ),
+          label: Text(todayPending > 0 ? "Pending Tasks ($todayPending)" : "Pending Tasks"),
+        ),
+
+        // Destination 3: Completed Tasks (with Badge)
+        NavigationDrawerDestination(
+          icon: Badge.count(
+            count: todayDone,
+            isLabelVisible: todayDone > 0,
+            backgroundColor: Colors.green,
+            child: const Icon(Icons.task_alt_outlined),
+          ),
+          selectedIcon: Badge.count(
+            count: todayDone,
+            isLabelVisible: todayDone > 0,
+            backgroundColor: Colors.green,
+            child: const Icon(Icons.task_alt_rounded),
+          ),
+          label: Text(todayDone > 0 ? "Completed Tasks ($todayDone)" : "Completed Tasks"),
+        ),
+
+        // Destination 4: High Priority (with Badge)
+        NavigationDrawerDestination(
+          icon: Badge.count(
+            count: highPriority,
+            isLabelVisible: highPriority > 0,
+            backgroundColor: Colors.redAccent,
+            child: const Icon(Icons.priority_high_rounded),
+          ),
+          selectedIcon: Badge.count(
+            count: highPriority,
+            isLabelVisible: highPriority > 0,
+            backgroundColor: Colors.redAccent,
+            child: const Icon(Icons.priority_high_rounded),
+          ),
+          label: Text(highPriority > 0 ? "High Priority ($highPriority)" : "High Priority"),
+        ),
+
+        const Divider(indent: 20, endIndent: 20, height: 24),
+
+        // Section: Services & Catalog
+        const Padding(
+          padding: EdgeInsets.fromLTRB(28, 8, 16, 8),
+          child: Text(
+            'Services & Catalog',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF64748B),
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+
+        // Destination 5: Task & Work Catalog (HTTP API)
+        NavigationDrawerDestination(
+          icon: const Badge(
+            label: Text('API'),
+            backgroundColor: Colors.deepPurple,
+            child: Icon(Icons.storefront_outlined),
+          ),
+          selectedIcon: const Badge(
+            label: Text('API'),
+            backgroundColor: Colors.deepPurple,
+            child: Icon(Icons.storefront_rounded),
+          ),
+          label: const Text("Task & Work Catalog (API)"),
+        ),
+
+        const Divider(indent: 20, endIndent: 20, height: 24),
+
+        // Sign Out item
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: ListTile(
+            leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            title: const Text('Sign Out', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onTap: () {
+              Navigator.of(context).pop();
+              _confirmSignOut();
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -189,6 +438,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      drawer: _buildNavigationDrawer(context),
       body: SafeArea(
         child: _isLoading
             ? const Center(
@@ -199,36 +449,71 @@ class _HomePageState extends State<HomePage> {
                   // App Bar / User Profile Header
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          Row(
                             children: [
-                              Text(
-                                'Hi, $displayName 👋',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF1E293B),
+                              // Material 3 Leading Menu Button with Notification Badge
+                              Builder(
+                                builder: (scaffoldContext) => IconButton(
+                                  icon: Badge.count(
+                                    count: _todayPendingCount,
+                                    isLabelVisible: _todayPendingCount > 0,
+                                    backgroundColor: Colors.deepPurple,
+                                    child: const Icon(
+                                      Icons.menu_rounded,
+                                      size: 26,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  tooltip: 'Open Navigation Drawer',
+                                  onPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _formatHeaderDate(today),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF64748B),
-                                  fontWeight: FontWeight.w500,
-                                ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Hi, $displayName 👋',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _formatHeaderDate(today),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
 
-                          // Schedly Brand Badge & Sign Out Button
+                          // Schedly Brand Badge & Actions with Material 3 Badges
                           Row(
                             children: [
+                              IconButton(
+                                icon: const Badge(
+                                  label: Text('API'),
+                                  backgroundColor: Colors.deepPurple,
+                                  child: Icon(Icons.checklist_rtl_rounded, color: Colors.deepPurple),
+                                ),
+                                tooltip: 'Task & Work Catalog',
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (context) => const ProductsPage()),
+                                  );
+                                },
+                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
@@ -241,7 +526,7 @@ class _HomePageState extends State<HomePage> {
                                   fit: BoxFit.contain,
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 4),
                               IconButton(
                                 icon: const Icon(Icons.logout_rounded, color: Color(0xFF64748B)),
                                 tooltip: 'Sign Out',
@@ -250,6 +535,82 @@ class _HomePageState extends State<HomePage> {
                             ],
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+
+                  // Products Catalog Banner (HTTP API Lab Feature)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const ProductsPage()),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.deepPurple.shade100),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.deepPurple.withValues(alpha: 0.06),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple.shade50,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.checklist_rtl_rounded,
+                                  color: Colors.deepPurple,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Task & Work Catalog (HTTP API)',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Browse & schedule tasks, meetings & work plans',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                size: 14,
+                                color: Colors.deepPurple,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
